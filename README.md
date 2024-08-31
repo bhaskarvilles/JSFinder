@@ -2,9 +2,7 @@
 
 **JSFinder** is a Python script designed to automate the process of discovering JavaScript files in a list of subdomains. By leveraging web scraping techniques, JSFinder fetches the HTML content of each subdomain, parses it, and identifies all linked JavaScript files. The script supports saving the discovered URLs into an output file for further analysis. It also includes a verbose mode that provides detailed output during the scanning process, making it easier to troubleshoot and understand the flow of operations.
 
----
-
-## README
+![JSF](https://github.com/user-attachments/assets/85b79682-7dde-4154-bead-f23bcd0d5913)
 
 # JSFinder
 
@@ -22,6 +20,7 @@ JSFinder is a Python-based tool for finding JavaScript files across a list of su
 - Python 3.x
 - `requests` library
 - `beautifulsoup4` library
+
 
 You can install the necessary Python libraries using pip:
 
