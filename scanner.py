@@ -2,61 +2,87 @@ import requests
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import argparse
+import concurrent.futures
+import logging
+from tqdm import tqdm
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
-def find_js_urls(base_url):
+# Setup logging to file for error handling
+logging.basicConfig(filename='errors.log', level=logging.ERROR,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Function to create a session with retry logic
+def create_session():
+    session = requests.Session()
+    retry = Retry(connect=5, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
+
+# Function to find JavaScript URLs
+def find_js_urls(base_url, timeout):
     """
     Finds JavaScript URLs within a given base URL.
-
+    
     Args:
         base_url (str): The base URL to scan.
-
+        timeout (int): Timeout duration for requests.
+    
     Returns:
         list: A list of JavaScript URLs found.
     """
-
     js_urls = []
+    session = create_session()
 
-    try:
-        response = requests.get(base_url)
-        response.raise_for_status()  # Check for HTTP errors
-
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Find all JavaScript URLs
-        js_urls = [urljoin(base_url, script['src']) for script in soup.find_all('script', src=True)]
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching {base_url}: {e}")
+    # Try both HTTPS and HTTP
+    for scheme in ['https://', 'http://']:
+        try:
+            url = scheme + base_url
+            response = session.get(url, timeout=timeout)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            js_urls.extend([urljoin(url, script['src']) for script in soup.find_all('script', src=True)])
+            break  # If successful, break the loop
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error fetching {url}: {e}")
 
     return js_urls
 
+# Function to scan subdomains concurrently
+def scan_subdomains(subdomains, timeout):
+    js_urls_found = []
+    
+    # Using ThreadPoolExecutor for concurrent execution
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(tqdm(executor.map(lambda subdomain: find_js_urls(subdomain, timeout), subdomains), total=len(subdomains), desc="Scanning subdomains", unit="subdomain"))
+
+    # Combine results from each subdomain
+    for result in results:
+        js_urls_found.extend(result)
+
+    return js_urls_found
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Find JavaScript files in given subdomains.")
-    parser.add_argument("-f", "--file", required=True, help="Input file containing subdomains")
-    parser.add_argument("-o", "--output", required=True, help="Output file to save JavaScript URLs")
+    parser = argparse.ArgumentParser(description="Scan subdomains for JavaScript files.")
+    parser.add_argument("-f", "--file", required=True, help="Input file containing subdomains, one per line")
+    parser.add_argument("-o", "--output", required=True, help="Output file to save JavaScript URLs found")
+    parser.add_argument("--timeout", type=int, default=10, help="Request timeout duration in seconds (default: 10s)")
 
     args = parser.parse_args()
 
-    js_urls_found = []
-
+    # Read subdomains from input file
     with open(args.file, 'r') as f:
         subdomains = [line.strip() for line in f]
 
-    for subdomain in subdomains:
-        base_url = f"https://{subdomain}"  # Assuming HTTPS
-        print(f"Scanning {base_url}...")
-        js_urls = find_js_urls(base_url)
-        if js_urls:
-            print("JavaScript files found:")
-            for js_url in js_urls:
-                print(js_url)
-                js_urls_found.append(js_url)  # Add to the list of found URLs
-        else:
-            print("No JavaScript files found.")
+    # Scan subdomains and find JavaScript URLs
+    js_urls_found = scan_subdomains(subdomains, args.timeout)
 
-    # Save the found JavaScript URLs to the output file
+    # Save JavaScript URLs to output file
     with open(args.output, 'w') as output_file:
         for js_url in js_urls_found:
             output_file.write(js_url + "\n")
 
-    print(f"JavaScript URLs have been saved to {args.output}")
+    print(f"\nJavaScript URLs have been saved to {args.output}\n")
+    print("Completed. Check 'errors.log' for any errors encountered during the scan.")
