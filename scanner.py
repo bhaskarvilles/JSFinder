@@ -4,10 +4,9 @@ from bs4 import BeautifulSoup
 import argparse
 import concurrent.futures
 import logging
-from tqdm import tqdm
+import time
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-import certifi
+from requests.packages.urllib3.util.retry import Retry  # Import Retry here
 
 # Setup logging to file for error handling
 logging.basicConfig(filename='errors.log', level=logging.ERROR,
@@ -55,14 +54,12 @@ def find_js_urls(base_url, timeout, verify_ssl):
 # Function to scan subdomains concurrently
 def scan_subdomains(subdomains, timeout, verify_ssl):
     js_urls_found = []
-
-    # Using ThreadPoolExecutor for concurrent execution
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = list(tqdm(executor.map(lambda subdomain: find_js_urls(subdomain, timeout, verify_ssl), subdomains), total=len(subdomains), desc="Scanning subdomains", unit="subdomain"))
-
-    # Combine results from each subdomain
-    for result in results:
-        js_urls_found.extend(result)
+    
+    for index, subdomain in enumerate(subdomains):
+        print(f"Scanning {subdomain} ({index + 1}/{len(subdomains)})...")
+        js_urls = find_js_urls(subdomain, timeout, verify_ssl)
+        js_urls_found.extend(js_urls)
+        time.sleep(0.5)  # Optional: to slow down the output for better readability
 
     return js_urls_found
 
